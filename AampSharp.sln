@@ -11,7 +11,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0AB3BF05
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AampSharp.Verify", "tests\AampSharp.Verify\AampSharp.Verify.csproj", "{C7A98E03-8DEB-4299-9CFA-48109B42FFA9}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SarcSharp", "..\SarcSharp\src\SarcSharp\SarcSharp.csproj", "{4CF25064-D403-4D54-ABC1-99F79A0A8341}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SarcSharp", "lib\SarcSharp\src\SarcSharp\SarcSharp.csproj", "{4CF25064-D403-4D54-ABC1-99F79A0A8341}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

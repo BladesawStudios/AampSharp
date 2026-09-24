@@ -1,0 +1,3 @@
+[submodule "lib/SarcSharp"]
+	path = lib/SarcSharp
+	url = git@github.com:BladesawStudios/SarcSharp.git

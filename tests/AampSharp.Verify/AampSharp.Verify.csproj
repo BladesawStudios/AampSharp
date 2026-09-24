@@ -10,7 +10,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\AampSharp\AampSharp.csproj" />
-    <ProjectReference Include="..\..\..\SarcSharp\src\SarcSharp\SarcSharp.csproj" />
+    <ProjectReference Include="..\..\lib\SarcSharp\src\SarcSharp\SarcSharp.csproj" />
   </ItemGroup>
 
 </Project>
