@@ -1,7 +1,8 @@
 # AampSharp
 
 A C# reader and writer for **AAMP**, the parameter archive format *Breath of the Wild* uses for
-actor parameters (`.bxml`, `.baiprog`, `.bphysics`, `.bas`, `.bumii` and many more).
+actor parameters (`.bxml`, `.baiprog`, `.bphysics`, `.bas`, `.bumii` and many more), and
+*Tears of the Kingdom* still uses for some of its files.
 
 ```csharp
 ParameterIO pio = ParameterIO.FromBinary(bytes);
@@ -14,6 +15,9 @@ foreach (var (hash, list) in pio.Root.Lists)
 
 byte[] rebuilt = pio.ToBinary();
 ```
+
+`NameTable.BotW` and `NameTable.TotK` hold each game's known names. Both are read only; `Copy()`
+one to add your own.
 
 ## Build
 

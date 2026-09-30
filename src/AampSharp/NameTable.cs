@@ -5,7 +5,8 @@ namespace AampSharp;
 // AAMP stores CRC32 hashes, not names; a table maps them back.
 public sealed class NameTable
 {
-    private static readonly Lazy<NameTable> BotwTable = new(LoadBotw);
+    private static readonly Lazy<NameTable> BotwTable = new(() => Load("AampSharp.BotwNames.txt"));
+    private static readonly Lazy<NameTable> TotkTable = new(() => Load("AampSharp.TotkNames.txt"));
 
     private readonly Dictionary<uint, string> _names = [];
     private FrozenDictionary<uint, string>? _frozen;
@@ -19,6 +20,9 @@ public sealed class NameTable
 
     /// <summary>Every name used by Breath of the Wild's AAMP files. Read only; copy it to extend.</summary>
     public static NameTable BotW => BotwTable.Value;
+
+    /// <summary>Every known name used by Tears of the Kingdom's AAMP files. Read only; copy it to extend.</summary>
+    public static NameTable TotK => TotkTable.Value;
 
     public int Count => _frozen?.Count ?? _names.Count;
 
@@ -43,10 +47,10 @@ public sealed class NameTable
     /// <summary>The name, or the hash as 0x followed by eight hex digits.</summary>
     public string NameOf(uint hash) => Find(hash) ?? $"0x{hash:X8}";
 
-    private static NameTable LoadBotw()
+    private static NameTable Load(string resource)
     {
-        using Stream stream = typeof(NameTable).Assembly.GetManifestResourceStream("AampSharp.BotwNames.txt")
-            ?? throw new InvalidOperationException("AampSharp was built without its name list.");
+        using Stream stream = typeof(NameTable).Assembly.GetManifestResourceStream(resource)
+            ?? throw new InvalidOperationException($"AampSharp was built without its name list {resource}.");
         using StreamReader reader = new(stream);
 
         NameTable table = new();
