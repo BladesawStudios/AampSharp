@@ -19,4 +19,13 @@ public sealed class ParameterIO
     public byte[] ToBinary() => AampWriter.Write(this);
 
     public void ToFile(string path) => File.WriteAllBytes(path, ToBinary());
+
+    public static ParameterIO FromYaml(string yaml) => AampYaml.Read(yaml);
+
+    public static ParameterIO FromYamlFile(string path) => FromYaml(File.ReadAllText(path));
+
+    /// <summary>Names come from <paramref name="names"/>, or BotW then TotK when null; unknown hashes are written as integers.</summary>
+    public string ToYaml(NameTable? names = null) => AampYaml.Write(this, names);
+
+    public void ToYamlFile(string path, NameTable? names = null) => File.WriteAllText(path, ToYaml(names));
 }
