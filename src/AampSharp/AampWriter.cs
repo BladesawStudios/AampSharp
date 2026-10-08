@@ -105,22 +105,49 @@ internal static class AampWriter
     }
 
     /// <summary>Visits objects in the order their values and strings are laid out.</summary>
-    internal static void WalkData(ParameterList list, Action<ParameterObject> visit)
+    internal static void WalkData(ParameterList list, Action<ParameterObject> visit, bool root = true)
     {
         int nextObject = 0, nextList = 0;
-        if (list.DataOrder is { } order && order.Count == list.Objects.Count + list.Lists.Count)
+        List<bool> order = list.DataOrder is { } known && known.Count == list.Objects.Count + list.Lists.Count
+            ? known
+            : DefaultOrder(list, root);
+
+        foreach (bool isObject in order)
         {
-            foreach (bool isObject in order)
+            if (isObject) visit(list.Objects[nextObject++].Value);
+            else WalkData(list.Lists[nextList++].Value, visit, false);
+        }
+    }
+
+    // oead's rule, which reproduces nearly every shipped file: the root's first seven objects, then
+    // one object before every second child list, the rest after the lists. AI programs (first object
+    // DemoAIActionIdx) leave all their objects until after the lists, and so does SupportBone.
+    internal static List<bool> DefaultOrder(ParameterList list, bool root)
+    {
+        List<bool> order = new(list.Objects.Count + list.Lists.Count);
+        int nextObject = 0;
+        bool aiProgram = list.Objects.Count > 0 && list.Objects[0].Key == DemoAIActionIdx;
+        bool CanTake() => !aiProgram && nextObject < list.Objects.Count && list.Objects[nextObject].Key != SupportBone;
+
+        if (root)
+            for (int i = 0; i < 7 && CanTake(); i++, nextObject++) order.Add(true);
+
+        for (int i = 0; i < list.Lists.Count; i++)
+        {
+            if (i % 2 == 0 && CanTake())
             {
-                if (isObject) visit(list.Objects[nextObject++].Value);
-                else WalkData(list.Lists[nextList++].Value, visit);
+                order.Add(true);
+                nextObject++;
             }
-            return;
+            order.Add(false);
         }
 
-        foreach (var (_, child) in list.Lists) WalkData(child, visit);
-        foreach (var (_, obj) in list.Objects) visit(obj);
+        for (; nextObject < list.Objects.Count; nextObject++) order.Add(true);
+        return order;
     }
+
+    private static readonly uint DemoAIActionIdx = Crc32.Hash("DemoAIActionIdx");
+    private static readonly uint SupportBone = Crc32.Hash("SupportBone");
 
     private static void Lay(
         ParameterList list,

@@ -40,7 +40,7 @@ internal static class AampReader
         {
             ReadOnlySpan<byte> values = data.Slice(dataStart, valuesSize);
             ReadOnlySpan<byte> strings = data.Slice(dataStart + valuesSize, (int)U32(data, 0x28));
-            Order(pio.Root, new DataBuilder(), values, strings);
+            Order(pio.Root, true, new DataBuilder(), values, strings);
         }
         return pio;
     }
@@ -49,8 +49,9 @@ internal static class AampReader
     // value and string sections were filled in that order. Rebuild it one item at a time, taking
     // the next object or the next list, whichever carries on reproducing this file. An item that
     // adds nothing new matches anywhere, and then where it goes makes no difference.
-    private static bool Order(ParameterList list, DataBuilder data, ReadOnlySpan<byte> values, ReadOnlySpan<byte> strings)
+    private static bool Order(ParameterList list, bool root, DataBuilder data, ReadOnlySpan<byte> values, ReadOnlySpan<byte> strings)
     {
+        var start = data.Mark();
         List<bool> order = new(list.Objects.Count + list.Lists.Count);
         list.DataOrder = order;
         int nextObject = 0, nextList = 0;
@@ -73,7 +74,7 @@ internal static class AampReader
 
             if (nextList < list.Lists.Count)
             {
-                if (Order(list.Lists[nextList].Value, data, values, strings))
+                if (Order(list.Lists[nextList].Value, false, data, values, strings))
                 {
                     order.Add(false);
                     nextList++;
@@ -82,20 +83,15 @@ internal static class AampReader
                 data.Rewind(mark);
             }
 
-            // Nothing reproduces the file from here; lay the rest out the default way.
+            // Nothing reproduces the file from here; the writer will lay this list out the default way.
             list.DataOrder = null;
-            data.Rewind(mark);
-            for (int i = nextList; i < list.Lists.Count; i++) Replay(list.Lists[i].Value, data);
-            for (int i = nextObject; i < list.Objects.Count; i++)
-                foreach (var (_, parameter) in list.Objects[i].Value.Parameters) data.Add(parameter);
+            data.Rewind(start);
+            AampWriter.WalkData(list, obj => { foreach (var (_, parameter) in obj.Parameters) data.Add(parameter); }, root);
             return false;
         }
 
         return true;
     }
-
-    private static void Replay(ParameterList list, DataBuilder data)
-        => AampWriter.WalkData(list, obj => { foreach (var (_, parameter) in obj.Parameters) data.Add(parameter); });
 
     private static bool Matches(DataBuilder data, ReadOnlySpan<byte> values, ReadOnlySpan<byte> strings)
         => values.StartsWith(data.Values) && strings.StartsWith(data.Strings);

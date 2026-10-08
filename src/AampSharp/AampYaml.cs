@@ -7,7 +7,8 @@ using YamlDotNet.Core.Events;
 namespace AampSharp;
 
 // oead's layout: !io { version, type, <root>: !list { objects, lists } }, !obj parameter maps,
-// names where the table knows them and bare integer hashes where it doesn't.
+// names where the table knows them and bare integer hashes where it doesn't. A NaN other than the
+// quiet NaN that .nan stands for is written as !nan with its bits.
 internal static partial class AampYaml
 {
     private static readonly Dictionary<ParameterType, string> Tags = new()
@@ -123,7 +124,7 @@ internal static partial class AampYaml
         {
             case ParameterType.Bool: Plain(e, p.AsBool() ? "true" : "false"); break;
             case ParameterType.Int: Plain(e, p.AsInt().ToString(CultureInfo.InvariantCulture)); break;
-            case ParameterType.F32: Plain(e, Real(p.AsFloat())); break;
+            case ParameterType.F32: e.Emit(Number(p.AsFloat())); break;
             case ParameterType.StringRef: Text(e, p.AsString()); break;
             case ParameterType.U32: Tagged(e, "!u", $"0x{p.AsUInt():X}"); break;
 
@@ -135,25 +136,25 @@ internal static partial class AampYaml
 
             case ParameterType.Vec2 or ParameterType.Vec3 or ParameterType.Vec4 or ParameterType.Color
                 or ParameterType.Quat or ParameterType.BufferF32:
-                Sequence(e, Tags[p.Type], Words(p.Raw).Select(w => Real(BitConverter.UInt32BitsToSingle(w))));
+                Sequence(e, Tags[p.Type], Words(p.Raw).Select(w => Number(BitConverter.UInt32BitsToSingle(w))));
                 break;
 
             case ParameterType.Curve1 or ParameterType.Curve2 or ParameterType.Curve3 or ParameterType.Curve4:
                 Sequence(e, "!curve", Words(p.Raw).Select((w, i) => i % (CurveSize / 4) < 2
-                    ? w.ToString(CultureInfo.InvariantCulture)
-                    : Real(BitConverter.UInt32BitsToSingle(w))));
+                    ? PlainScalar(w.ToString(CultureInfo.InvariantCulture))
+                    : Number(BitConverter.UInt32BitsToSingle(w))));
                 break;
 
             case ParameterType.BufferInt:
-                Sequence(e, Tags[p.Type], Words(p.Raw).Select(w => unchecked((int)w).ToString(CultureInfo.InvariantCulture)));
+                Sequence(e, Tags[p.Type], Words(p.Raw).Select(w => PlainScalar(unchecked((int)w).ToString(CultureInfo.InvariantCulture))));
                 break;
 
             case ParameterType.BufferU32:
-                Sequence(e, Tags[p.Type], Words(p.Raw).Select(w => w.ToString(CultureInfo.InvariantCulture)));
+                Sequence(e, Tags[p.Type], Words(p.Raw).Select(w => PlainScalar(w.ToString(CultureInfo.InvariantCulture))));
                 break;
 
             case ParameterType.BufferBinary:
-                Sequence(e, Tags[p.Type], p.Raw.Select(b => b.ToString(CultureInfo.InvariantCulture)));
+                Sequence(e, Tags[p.Type], p.Raw.Select(b => PlainScalar(b.ToString(CultureInfo.InvariantCulture))));
                 break;
 
             default: throw new InvalidOperationException($"{p.Type} has no YAML form.");
@@ -165,10 +166,10 @@ internal static partial class AampYaml
         for (int i = 0; i + 4 <= raw.Length; i += 4) yield return BinaryPrimitives.ReadUInt32LittleEndian(raw.AsSpan(i));
     }
 
-    private static void Sequence(IEmitter e, string tag, IEnumerable<string> values)
+    private static void Sequence(IEmitter e, string tag, IEnumerable<Scalar> values)
     {
         e.Emit(new SequenceStart(AnchorName.Empty, new TagName(tag), false, SequenceStyle.Flow));
-        foreach (string value in values) Plain(e, value);
+        foreach (Scalar value in values) e.Emit(value);
         e.Emit(new SequenceEnd());
     }
 
@@ -178,8 +179,9 @@ internal static partial class AampYaml
         else Plain(e, hash.ToString(CultureInfo.InvariantCulture));
     }
 
-    private static void Plain(IEmitter e, string value)
-        => e.Emit(new Scalar(AnchorName.Empty, TagName.Empty, value, ScalarStyle.Plain, true, false));
+    private static void Plain(IEmitter e, string value) => e.Emit(PlainScalar(value));
+
+    private static Scalar PlainScalar(string value) => new(AnchorName.Empty, TagName.Empty, value, ScalarStyle.Plain, true, false);
 
     private static void Tagged(IEmitter e, string tag, string value)
         => e.Emit(new Scalar(AnchorName.Empty, new TagName(tag), value, ScalarStyle.Plain, false, false));
@@ -191,16 +193,21 @@ internal static partial class AampYaml
             plain ? ScalarStyle.Any : ScalarStyle.DoubleQuoted, plain, !plain));
     }
 
-    private static string Real(float value)
+    private const uint QuietNaN = 0x7FC00000;
+
+    private static Scalar Number(float value)
     {
-        if (float.IsNaN(value)) return ".nan";
-        if (float.IsPositiveInfinity(value)) return ".inf";
-        if (float.IsNegativeInfinity(value)) return "-.inf";
+        uint bits = BitConverter.SingleToUInt32Bits(value);
+        if (float.IsNaN(value) && bits != QuietNaN)
+            return new(AnchorName.Empty, new TagName("!nan"), $"0x{bits:X8}", ScalarStyle.Plain, false, false);
+        if (float.IsNaN(value)) return PlainScalar(".nan");
+        if (float.IsPositiveInfinity(value)) return PlainScalar(".inf");
+        if (float.IsNegativeInfinity(value)) return PlainScalar("-.inf");
 
         string text = value.ToString("R", CultureInfo.InvariantCulture);
-        if (text.Contains('.')) return text;
+        if (text.Contains('.')) return PlainScalar(text);
         int exponent = text.IndexOf('E');
-        return exponent >= 0 ? text.Insert(exponent, ".0") : text + ".0";
+        return PlainScalar(exponent >= 0 ? text.Insert(exponent, ".0") : text + ".0");
     }
 
     // ---- reading ----------------------------------------------------------
@@ -260,6 +267,7 @@ internal static partial class AampYaml
             return s.Tag.Value switch
             {
                 "!u" => Parameter.FromUInt(checked((uint)(Integer(s) ?? throw Error(s, "expected an integer")))),
+                "!nan" => Parameter.FromFloat(Single(s)),
                 "!str32" => Parameter.FromString(ParameterType.String32, s.Value),
                 "!str64" => Parameter.FromString(ParameterType.String64, s.Value),
                 "!str256" => Parameter.FromString(ParameterType.String256, s.Value),
@@ -329,11 +337,13 @@ internal static partial class AampYaml
         return v;
     }
 
-    private static float Single(Scalar s) => Real(s.Value) ?? throw Error(s, "expected a number");
+    private static float Single(Scalar s) => !s.Tag.IsEmpty && s.Tag.Value == "!nan"
+        ? BitConverter.UInt32BitsToSingle(checked((uint)(Integer(s) ?? throw Error(s, "expected the NaN's bits"))))
+        : Real(s.Value) ?? throw Error(s, "expected a number");
 
     private static float? Real(string v) => v switch
     {
-        ".nan" or ".NaN" or ".NAN" => float.NaN,
+        ".nan" or ".NaN" or ".NAN" => BitConverter.UInt32BitsToSingle(QuietNaN),
         ".inf" or ".Inf" or ".INF" or "+.inf" or "+.Inf" or "+.INF" => float.PositiveInfinity,
         "-.inf" or "-.Inf" or "-.INF" => float.NegativeInfinity,
         _ => float.TryParse(v, NumberStyles.Float, CultureInfo.InvariantCulture, out float f) ? f : null,
