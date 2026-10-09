@@ -95976,3 +95976,5 @@ zyx
 ？
 ＡＳ再生
 Ｙ軸回転のみ有効
+BeginObservation
+SizeType

@@ -37,6 +37,7 @@ internal static partial class AampYaml
     public static string Write(ParameterIO pio, NameTable? names)
     {
         Func<uint, string?> find = names is null ? h => NameTable.BotW.Find(h) ?? NameTable.TotK.Find(h) : names.Find;
+        NameResolver resolver = new(NameGuesser.Extra(StringValues(pio.Root)), NameGuesser.Default(find));
 
         StringWriter text = new();
         Emitter e = new(text, new EmitterSettings().WithBestWidth(int.MaxValue));
@@ -47,8 +48,8 @@ internal static partial class AampYaml
         Plain(e, pio.Version.ToString(CultureInfo.InvariantCulture));
         Plain(e, "type");
         Text(e, pio.Type);
-        Key(e, pio.RootHash, find);
-        List(e, pio.Root, find);
+        Key(e, pio.RootHash, 0, 0, resolver);
+        List(e, pio.Root, resolver, pio.RootHash);
         e.Emit(new MappingEnd());
         e.Emit(new DocumentEnd(true));
         e.Emit(new StreamEnd());
@@ -87,19 +88,39 @@ internal static partial class AampYaml
 
     // ---- writing ----------------------------------------------------------
 
-    private static void List(IEmitter e, ParameterList list, Func<uint, string?> find)
+    // The names oead can use besides its table: the text values in the file itself, then guesses from the parent's name.
+    private sealed record NameResolver(NameGuesser Extra, NameGuesser Main)
+    {
+        public string? Get(uint hash, int index, uint parent) => Extra.Get(hash, index, parent) ?? Main.Get(hash, index, parent);
+    }
+
+    private static IEnumerable<string> StringValues(ParameterList list)
+    {
+        foreach (var (_, obj) in list.Objects)
+            foreach (var (_, parameter) in obj.Parameters)
+                if (parameter.Type is ParameterType.String32 or ParameterType.String64 or ParameterType.String256 or ParameterType.StringRef)
+                    yield return parameter.AsString();
+
+        foreach (var (_, child) in list.Lists)
+            foreach (string value in StringValues(child))
+                yield return value;
+    }
+
+    private static void List(IEmitter e, ParameterList list, NameResolver names, uint listHash)
     {
         e.Emit(new MappingStart(AnchorName.Empty, new TagName("!list"), false, MappingStyle.Block));
 
         Plain(e, "objects");
         e.Emit(new MappingStart(AnchorName.Empty, TagName.Empty, true, list.Objects.Count == 0 ? MappingStyle.Flow : MappingStyle.Block));
+        int objectIndex = 0;
         foreach (var (hash, obj) in list.Objects)
         {
-            Key(e, hash, find);
+            Key(e, hash, objectIndex++, listHash, names);
             e.Emit(new MappingStart(AnchorName.Empty, new TagName("!obj"), false, obj.Parameters.Count == 0 ? MappingStyle.Flow : MappingStyle.Block));
+            int parameterIndex = 0;
             foreach (var (name, parameter) in obj.Parameters)
             {
-                Key(e, name, find);
+                Key(e, name, parameterIndex++, hash, names);
                 Value(e, parameter);
             }
             e.Emit(new MappingEnd());
@@ -108,10 +129,11 @@ internal static partial class AampYaml
 
         Plain(e, "lists");
         e.Emit(new MappingStart(AnchorName.Empty, TagName.Empty, true, list.Lists.Count == 0 ? MappingStyle.Flow : MappingStyle.Block));
+        int listIndex = 0;
         foreach (var (hash, child) in list.Lists)
         {
-            Key(e, hash, find);
-            List(e, child, find);
+            Key(e, hash, listIndex++, listHash, names);
+            List(e, child, names, hash);
         }
         e.Emit(new MappingEnd());
 
@@ -173,9 +195,9 @@ internal static partial class AampYaml
         e.Emit(new SequenceEnd());
     }
 
-    private static void Key(IEmitter e, uint hash, Func<uint, string?> find)
+    private static void Key(IEmitter e, uint hash, int index, uint parent, NameResolver names)
     {
-        if (find(hash) is { } name) Text(e, name);
+        if (names.Get(hash, index, parent) is { } name) Text(e, name);
         else Plain(e, hash.ToString(CultureInfo.InvariantCulture));
     }
 
@@ -204,10 +226,39 @@ internal static partial class AampYaml
         if (float.IsPositiveInfinity(value)) return PlainScalar(".inf");
         if (float.IsNegativeInfinity(value)) return PlainScalar("-.inf");
 
-        string text = value.ToString("R", CultureInfo.InvariantCulture);
-        if (text.Contains('.')) return PlainScalar(text);
-        int exponent = text.IndexOf('E');
-        return PlainScalar(exponent >= 0 ? text.Insert(exponent, ".0") : text + ".0");
+        // oead writes a float with nine significant digits (C's %.9g), and a whole one with ".0" after it.
+        string text = General9(value);
+        return PlainScalar(text.Contains('.') || text.Contains('e') ? text : text + ".0");
+    }
+
+    // C's %.9g: nine significant digits, an exponent when it is below -4 or at least 9, trailing zeros dropped.
+    private static string General9(float value)
+    {
+        string e = ((double)value).ToString("E8", CultureInfo.InvariantCulture);
+        bool negative = e[0] == '-';
+        if (negative) e = e[1..];
+        int at = e.IndexOf('E');
+        int exponent = int.Parse(e[(at + 1)..], CultureInfo.InvariantCulture);
+        string digits = e[..at].Replace(".", "");
+        string body;
+        if (exponent < -4 || exponent >= 9)
+        {
+            string mantissa = digits.TrimEnd('0');
+            if (mantissa.Length == 0) mantissa = "0";
+            body = (mantissa.Length > 1 ? mantissa[0] + "." + mantissa[1..] : mantissa)
+                + "e" + (exponent < 0 ? "-" : "+") + Math.Abs(exponent).ToString("00", CultureInfo.InvariantCulture);
+        }
+        else if (exponent >= 0)
+        {
+            string fraction = digits[(exponent + 1)..].TrimEnd('0');
+            body = fraction.Length > 0 ? digits[..(exponent + 1)] + "." + fraction : digits[..(exponent + 1)];
+        }
+        else
+        {
+            body = "0." + (new string('0', -exponent - 1) + digits).TrimEnd('0');
+        }
+
+        return negative ? "-" + body : body;
     }
 
     // ---- reading ----------------------------------------------------------

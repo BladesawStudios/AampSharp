@@ -19,6 +19,7 @@
   <ItemGroup>
     <EmbeddedResource Include="BotwNames.txt" LogicalName="AampSharp.BotwNames.txt" />
     <EmbeddedResource Include="TotkNames.txt" LogicalName="AampSharp.TotkNames.txt" />
+    <EmbeddedResource Include="NumberedNames.txt" LogicalName="AampSharp.NumberedNames.txt" />
   </ItemGroup>
 
 </Project>
