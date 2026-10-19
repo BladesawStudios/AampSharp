@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
-    <LibRoot Condition="'$(LibRoot)' == ''">$(MSBuildThisFileDirectory)..\..\..</LibRoot>
+    <AampLibRoot Condition="'$(AampLibRoot)' == ''">$(MSBuildThisFileDirectory)..\..\lib</AampLibRoot>
   </PropertyGroup>
 
   <ItemGroup>
@@ -21,9 +21,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\AampSharp\AampSharp.csproj" />
-    <ProjectReference Include="..\..\lib\SarcSharp\src\SarcSharp\SarcSharp.csproj" />
-    <ProjectReference Include="$(LibRoot)\Yaz0Sharp\src\Yaz0Sharp\Yaz0Sharp.csproj" />
-    <ProjectReference Include="$(LibRoot)\ZsDicSharp\src\ZsDicSharp\ZsDicSharp.csproj" />
+    <ProjectReference Include="$(AampLibRoot)\SarcSharp\src\SarcSharp\SarcSharp.csproj" />
+    <ProjectReference Include="$(AampLibRoot)\Yaz0Sharp\src\Yaz0Sharp\Yaz0Sharp.csproj" />
+    <ProjectReference Include="$(AampLibRoot)\ZsDicSharp\src\ZsDicSharp\ZsDicSharp.csproj" />
   </ItemGroup>
 
 </Project>
